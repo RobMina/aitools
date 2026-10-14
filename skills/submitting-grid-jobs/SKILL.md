@@ -27,8 +27,8 @@ Check flag spellings against `jobsub_submit --help` on your installed version.
 
 ## 1. Build the muse tarball once
 
-`muse tarball` is expensive (about 5 minutes for a full Offline build). Do not call it
-from inside a submit script that you run repeatedly.
+`muse tarball` is expensive: it compresses the whole build into a file of several hundred
+MB. Do not call it from inside a submit script that you run repeatedly.
 
 ```bash
 cd /path/to/your/muse/workspace      # directory with the muse build
@@ -42,6 +42,8 @@ muse tarball                         # prints the Code.tar.bz2 path
   tarball path rather than build one.
 - Extra files can be bundled: `muse tarball *.txt data/*.root`
   (see [building-with-muse](../building-with-muse/SKILL.md)).
+- By default the tarball is written under `/exp/mu2e/data/users/$USER/museTarball`
+  (`museTarball.sh`), so old tarballs count against your data-area quota; delete stale ones.
 - Run `jobsub_submit` from a scratch/data directory, not from an app area or a synced
   working tree: jobsub writes temporary tarball copies into the current directory.
 
@@ -53,8 +55,7 @@ errors such as `HTTP 403 Permission refused (destination)` from `gfal-copy`, or
 `403 Forbidden` / `File exists` from `ifdh cp`, even though the directory exists and has
 correct permissions.
 
-Request write scope explicitly, using the **logical `/mu2e/...` path**, not the `/pnfs`
-FUSE path:
+Request write scope explicitly, using the **logical `/mu2e/...` path**:
 
 ```bash
 jobsub_submit -G mu2e --role=Analysis \
@@ -62,17 +63,16 @@ jobsub_submit -G mu2e --role=Analysis \
   ...
 ```
 
-| | Path |
-|---|---|
-| Correct | `--need-storage-modify=/mu2e/scratch/users/<user>/<outdir>` |
-| Wrong | `--need-storage-modify=/pnfs/mu2e/scratch/users/<user>/<outdir>` |
-
 Notes:
 
-- The directory should cover everything the job writes (the flag takes directories needing
-  `storage.modify` scope in the job token).
-- `jobsub_submit` cannot infer the scope from an output path held in a shell variable
-  inside the job script; always pass the flag on the command line.
+- jobsub_lite always drops `storage.modify` from the job token and adds back only the
+  paths given with `--need-storage-modify`. It never reads output paths from the job
+  script, so always pass the flag on the command line.
+- The directory must cover everything the job writes; a copy-out outside it still gets 403.
+- A `/pnfs/mu2e/...` path is converted to `/mu2e/...` by jobsub_lite with a warning
+  (`lib/token_mods.py`); write the logical form to keep the output clean.
+- A path outside the `storage.modify` scope of your own token fails at submit time with
+  `PermissionError: Unable to add 'storage.modify:...' scope`, not later in the job.
 - When adapting someone else's `jobsub_submit` command (for example a production
   validation script run under a production role), add the flag if your jobs write to
   scratch.
@@ -150,10 +150,12 @@ jobsub_submit ... \
   leftover `*.tbz2` after an interrupted submit.
 - Do not assume the hash equals the SHA-256 of your original file; the hash is of the
   rewritten copy.
+- jobsub_lite refuses a tarball that contains any single file over 1 GiB
+  (`RCDS_MAX_FILE_SIZE`); keep large data files out of the tarball.
 
 ## 6. Shell gotchas under `set -e`
 
-Driver and worker scripts commonly use `set -e`; two setup steps return non-zero even
+Driver and worker scripts commonly use `set -e`; setup steps can return non-zero even
 though the environment is fine.
 
 ```bash
@@ -165,13 +167,12 @@ muse setup || true
 
 - `source setupmu2e-art.sh` can return non-zero (an internal `return 1` when the
   production DB is not configured), which aborts the script before `mu2e` is available.
-- `muse setup` can exit non-zero in a fresh non-interactive shell because of an
-  `export` of a variable name containing a hyphen
-  (`export: 'MU2E-TRIG-CONFIG_INC=...' not a valid identifier`). The environment is still
-  set; treat the exit code as noise.
-- `muse setup` must be run from the directory that contains the muse build (the build
-  workspace, where the `.muse` file lives), not from your FCL or script directory.
-  Otherwise `mu2e` does not get added to `PATH`.
+- Muse versions before v4_16_00 could exit non-zero after `muse setup` in a workspace
+  containing `mu2e-trig-config` (`export: 'MU2E-TRIG-CONFIG_INC=...' not a valid
+  identifier`); newer versions convert the hyphen. `|| true` is harmless either way.
+- Run `muse setup` in the muse build workspace (where the `.muse` file lives), or from
+  anywhere as `muse setup <workDir>`. Run from another directory without the argument,
+  it does not set up your build and `mu2e` is not added to `PATH`.
 - On the worker, after the tarball is unpacked, set up with `source Code/setup.sh` (or
   `muse setup Code`) and use `|| true` there as well.
 
@@ -180,9 +181,10 @@ muse setup || true
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `403` / `Permission refused (destination)` on copy-out to `/pnfs` | Read-only job token | Add `--need-storage-modify=/mu2e/scratch/users/<user>/<dir>` (section 2) |
-| Same 403 despite the flag | Path given as `/pnfs/mu2e/...` | Use the logical `/mu2e/...` prefix |
+| Same 403 despite the flag | Destination outside the flag's directory | Make the flag directory cover every output |
+| Submit fails with `PermissionError: Unable to add 'storage.modify:...'` | Path outside your own token scope | Use a directory under `/mu2e/scratch/users/<user>` |
 | Submit sits silent after "Submitting N jobs" | `dropbox://` retarring a large tarball | Resubmit with the `/cvmfs` RCDS path (section 5) |
 | Script dies right after `source setupmu2e-art.sh` or `muse setup` | `set -e` with non-zero return | Append `|| true` (section 6) |
-| `mu2e` not found after `muse setup` | Ran from wrong directory | `cd` to the muse build workspace first |
+| `mu2e` not found after `muse setup` | Ran outside the workspace without an argument | `cd` to the workspace or `muse setup <workDir>` |
 | Jobs held | Exceeded `--disk`, `--memory` or `--expected-lifetime` | Re-measure and resize (section 3) |
 | Jobs idle, never start | Very large `--disk` request | Fewer files per job, stream, or use interactive nodes |
