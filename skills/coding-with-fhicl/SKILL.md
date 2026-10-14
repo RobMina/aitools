@@ -3,8 +3,8 @@ name: coding-with-fhicl
 description: Author, review, and troubleshoot Mu2e FHiCL configuration files for Offline, Production, and trigger workflows. Use when editing .fcl files, composing include chains, configuring modules/services, or debugging job configuration failures.
 compatibility: Requires Mu2e offline environment, mu2einit, muse setup, and familiarity with Production/Offline repositories
 metadata:
-  version: "1.3.0"
-  last-updated: "2026-02-18"
+  version: "1.4.0"
+  last-updated: "2026-10-14"
 ---
 
 # Coding with FHiCL
@@ -81,6 +81,7 @@ Include/path resolution rule:
 
 - The file passed to `mu2e -c <file.fcl>` can be anywhere (absolute or relative path).
 - `#include` targets are resolved via `FHICL_FILE_PATH` (colon-separated search paths), typically configured by `muse setup`.
+- Absolute paths do not work in `#include`; see "Gotchas" below.
 - If includes fail unexpectedly, inspect `FHICL_FILE_PATH` first.
 
 ---
@@ -277,17 +278,53 @@ Example (`Production/Validation/nightly/reco_00.fcl`):
 
 These dotted assignments override previously defined nested values from included files.
 
-Verification recipe:
+Verify with `fhicl-dump -a` (section 7): the annotation at the key should name the top-level file.
+
+---
+
+## Gotchas
+
+### `#include` does not take absolute paths
+
+`#include "/abs/path/base.fcl"` fails at startup (`Can't find file`, exit code 90): targets
+are searched only in the `FHICL_FILE_PATH` directories. This bites generated per-job
+wrapper files that pull in a base config from a working-copy directory. Prepend (so your
+copy wins) that directory and include by relative name:
 
 ```bash
-fhicl-dump -a Production/Validation/nightly/reco_00.fcl > /tmp/reco_00_annotated.fcl
-grep -nE 'fileNames:|LoopHelixOutput:|fileName:' /tmp/reco_00_annotated.fcl | head
+export FHICL_FILE_PATH="/path/to/work/fcl:${FHICL_FILE_PATH}"
 ```
 
-Expected evidence in annotations:
+```fcl
+#include "base.fcl"   # overrides go after the include
+```
 
-- `fileName: "reco_00.art"  # ./Production/Validation/nightly/reco_00.fcl:5`
-- `fileNames: [ ... ]  # ./Production/Validation/nightly/reco_00.fcl:2`
+Only the in-file `#include` is restricted; `mu2e -c <path>` takes any filesystem path.
+
+### Non-ASCII characters break the parser
+
+Non-ASCII bytes are rejected even inside `#` comments (em dashes and smart quotes are the
+usual culprits): art fails at startup with exit code 90. Use plain ASCII (`--`, `'`).
+Find offenders with `grep -nP '[^\x00-\x7F]' file.fcl`.
+
+### `@table::` merges, it does not replace
+
+`@table::name` inside a table body splices in the keys of `name`; keys written after it
+override, all others are kept. `@local::name` instead places a copy of the whole value.
+
+```fcl
+physics.producers.MyModule.Settings: {
+  @table::Subsystem.NominalSettings   # start from the nominal table
+  SomeFlag : true                     # override only what differs
+}
+```
+
+### Overrides must come after the includes they modify
+
+Includes and epilogs apply in order and later assignments win, so a setting placed above
+an `#include` can be silently reset by it. Put overrides (geometry, database settings,
+path tweaks) after the last `#include`, and repeat any that an epilog resets. Check with
+`fhicl-dump -a` that the key's annotation points at your file, not the epilog.
 
 ---
 
@@ -338,16 +375,9 @@ Checks:
 
 ### Dotted epilog did not take effect
 
-Symptoms:
-
-- Expected custom value still appears as default from included file
-
-Checks:
-
-1. Confirm dotted key path exactly matches nested structure (`a.b.c` spelling/case).
-2. Confirm override appears after the include/body it is meant to replace.
-3. Run `fhicl-dump -a` and inspect annotation at resolved key.
-4. If annotation still points to included file, override key path likely does not match.
+Confirm the dotted key path matches the nested structure exactly (`a.b.c` spelling/case)
+and appears after the include it overrides. If the `fhicl-dump -a` annotation at the key
+still points at the included file, the key path does not match.
 
 ### Include file not found / wrong file loaded
 
@@ -360,7 +390,8 @@ Checks:
 
 1. Confirm `muse setup` was run in the current shell.
 2. Print `FHICL_FILE_PATH` and verify expected directories are present and ordered.
-3. Use absolute path for the top-level `-c` file if current directory is ambiguous.
+3. Use absolute path for the top-level `-c` file if current directory is ambiguous (never for `#include`).
+   Check also for non-ASCII characters in comments (exit code 90).
 4. Re-run `fhicl-dump -a` and inspect annotation origins for the include result.
 
 ### Unknown parameter/module label
@@ -378,29 +409,14 @@ Checks:
 
 ### Path/schedule behavior not as expected
 
-Symptoms:
-
-- Job runs but missing expected outputs
-- Unexpected module order/effects
-
-Checks:
-
-1. Verify module labels are present in the intended path.
-2. Check path names and schedule wiring.
-3. Confirm filters are not dropping events earlier than expected.
-4. Inspect output module selectors/routing.
+Job runs but outputs are missing or module order is wrong: verify module labels are in
+the intended path, check path/schedule wiring, confirm filters are not dropping events
+early, and inspect output module selectors/routing.
 
 ### Environment mismatch issues
 
-Symptoms:
-
-- Config worked previously but now fails after environment changes
-
-Checks:
-
-1. Re-run `mu2einit` and `muse setup` in a fresh shell.
-2. Confirm branch/workDir alignment across coordinated repos.
-3. Check for old generated files or stale artifacts in test areas.
+Config worked before but fails now: re-run `mu2einit` and `muse setup` in a fresh shell,
+confirm branch/workDir alignment across coordinated repos, and clear stale generated files.
 
 ---
 
@@ -476,17 +492,3 @@ mu2e -c <config.fcl> -n 10
 
 **Cross-repo impacts**
 - <none | list>
-
----
-
-## Suggested Future Reference Files
-
-If this skill grows, split heavy content into:
-
-- `references/fhicl-patterns.md` (idiomatic include/override examples)
-- `references/fhicl-troubleshooting.md` (error-message-to-fix mapping)
-- `references/fhicl-review-checklist.md` (PR reviewer checklist)
-
-For v1, keep everything in this single file.
-
-```
