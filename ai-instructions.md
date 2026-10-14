@@ -151,6 +151,7 @@ For detailed procedures and reference material, consult the **skills/** director
 - **Data handling overview**: [skills/understanding-data-handling](skills/understanding-data-handling/SKILL.md)
 - **Finding data with SAM**: [skills/finding-data-sam](skills/finding-data-sam/SKILL.md)
 - **Finding data with metacat**: [skills/finding-data-metacat](skills/finding-data-metacat/SKILL.md)
+- **Running on the GPVMs (shell/session gotchas)**: [skills/running-on-gpvms](skills/running-on-gpvms/SKILL.md)
 
 External references:
 - **Mu2e wiki**: https://mu2ewiki.fnal.gov/wiki/Main_Page
