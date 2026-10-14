@@ -303,8 +303,10 @@ Only the in-file `#include` is restricted; `mu2e -c <path>` takes any filesystem
 
 ### Non-ASCII characters break the parser
 
-Non-ASCII bytes are rejected even inside `#` comments (em dashes and smart quotes are the
-usual culprits): art fails at startup with exit code 90. Use plain ASCII (`--`, `'`).
+Non-ASCII bytes are rejected anywhere in the file, including `#` comments and quoted string
+values (em dashes, micro signs and smart quotes are the usual culprits): `fhicl-dump` aborts with
+`Parse error ... detected at or near line L, character C`, and art exits with code 90.
+Use plain ASCII (`--`, `'`, `us`).
 Find offenders with `grep -nP '[^\x00-\x7F]' file.fcl`.
 
 ### `@table::` merges, it does not replace
@@ -391,7 +393,7 @@ Checks:
 1. Confirm `muse setup` was run in the current shell.
 2. Print `FHICL_FILE_PATH` and verify expected directories are present and ordered.
 3. Use absolute path for the top-level `-c` file if current directory is ambiguous (never for `#include`).
-   Check also for non-ASCII characters in comments (exit code 90).
+   Check also for non-ASCII characters in comments or strings (exit code 90).
 4. Re-run `fhicl-dump -a` and inspect annotation origins for the include result.
 
 ### Unknown parameter/module label
