@@ -22,10 +22,12 @@ list in order.
 The GPVMs run Linux. Use `root` (not `root.exe`) and standard POSIX tools and
 paths.
 
-### Login shells set `noclobber`
+### Your shell may set `noclobber`
 
-`>` onto an existing file fails with `cannot overwrite existing file`, and a
-compound command containing it exits non-zero without running the rest.
+Mu2e's example `.bashrc` sets `noclobber` for interactive shells, and many
+personal setups set it everywhere. Then `>` onto an existing file fails with
+`cannot overwrite existing file`, and a compound command containing it exits
+non-zero without running the rest.
 
 - In commands: use `>|` (force overwrite), `>>` (append), or `rm -f FILE` first.
 - In scripts: add `set +o noclobber` after the environment setup, because
@@ -42,12 +44,13 @@ variables. `set -u` before them aborts the whole shell, and the error vanishes
 if setup output is sent to `/dev/null`. Source the setup first, then enable
 `set -u`.
 
-### `muse setup` can exit non-zero under `set -e`
+### `muse setup` under `set -e`
 
-In a fresh non-interactive shell `muse setup` can print
+Muse versions before v4_16_00 could print
 ``export: `MU2E-TRIG-CONFIG_INC=...' not a valid identifier`` (hyphenated
-package name) and return non-zero even though the environment is set up
-correctly. In scripts using `set -e`, write:
+package name) and return non-zero even though the environment was set up
+correctly; newer versions convert the hyphen. `|| true` is harmless either way
+in scripts using `set -e`:
 
 ```bash
 muse setup || true
@@ -135,13 +138,19 @@ Fixes:
 3. If new sessions on a node keep dying with `Key has expired`, stop the stale
    tmux server there (`tmux kill-server`); it respawns clean on next use. As an
    immediate workaround, use another GPVM.
+4. `k5push <node>` (see the Authentication wiki page) pushes your current ticket
+   to another node. It is not confirmed to refresh a cache that an already
+   running tmux session holds, so prefer restarting the session.
 
 ## 4. /pnfs access
 
-`/pnfs` is a dCache namespace. Bare `ls`, `find` or `stat` on it can hang or
-trigger expensive metadata operations.
+`/pnfs` is a dCache namespace backed by a database. `find`, `ls -l`/`ls -lr`
+and `stat` fetch the full record of every file and are slow and expensive; a
+plain `ls` reads only the directory record (see the Dcache wiki page). Many
+nodes alias `ls` to `ls --color=auto`, which is slower; use `\ls` to bypass the
+alias.
 
-- List or check existence with `ifdh ls <path>` (or `ifdh ll`), or use
+- In scripts, list or check existence with `ifdh ls <path>` (or `ifdh ll`), or use
   `samweb locate-file` / metacat for dataset queries.
 - Copy with `ifdh cp`, or read via xrootd.
 - art/`mu2e` jobs read their input art files straight from the `/pnfs` path
@@ -154,7 +163,7 @@ See [finding-data-sam](../finding-data-sam/SKILL.md) for catalogue queries.
 
 - **App area** (`/exp/mu2e/app/users/<user>/`): code, build products, scripts.
   No data files.
-- **Data area** (`/exp/mu2e/data/users/<user>/`) or `/pnfs/scratch/users/<user>/`:
+- **Data area** (`/exp/mu2e/data/users/<user>/`) or `/pnfs/mu2e/scratch/users/<user>/`:
   ntuples, art files, plots, logs, test outputs. This applies to small test runs
   too.
 - **Inputs are not data-area content.** Do not copy digi/raw/art inputs into the
@@ -173,15 +182,17 @@ getfattr --only-values -n ceph.dir.rbytes "$d"          # bytes used
 getfattr --only-values -n ceph.quota.max_bytes "$d"     # quota
 ```
 
-Use these rather than `du`, which is slow on CephFS. Usage accounting lags
+`mu2eQuota` (see the Disks wiki page) prints the same summary. Use these rather
+than `du`, which is slow on CephFS. Usage accounting lags
 deletes by a few tens of seconds. Intermediate `.art` files accumulate quickly
 when a test driver does not delete them; remove them once the ntuples they
 produced are done.
 
 ## 6. One heavy job per host
 
-The GPVMs are shared interactive login machines. Keep to **one core**, that is,
-one mu2e job at a time, per node.
+The GPVMs are shared quad-core interactive machines meant for short to moderate
+jobs (see the ComputingLogin wiki page). No per-user core limit is published; as
+etiquette, run **one** heavy job (one mu2e job, one core) at a time per node.
 
 - Parallelise by spreading jobs across several GPVMs, one job each, and run each
   node's list sequentially. Do not background several chains on one node.
@@ -195,8 +206,8 @@ one mu2e job at a time, per node.
 1. `pgrep -af <name>` on the node: is it running, or already gone?
 2. Does the log exist and have bytes? A 0-byte log suggests a `noclobber`
    failure or a SIGHUP kill (sections 1, 2).
-3. Was `set -u` placed before setup, or `muse setup` run under `set -e` without
-   `|| true`?
+3. Was `set -u` placed before setup, or (with older Muse) `muse setup` run under
+   `set -e` without `|| true`?
 4. `klist | grep krbtgt` from inside the session; `Key has expired` in the pane
    points at a stale session (section 3).
 5. Free space in the target quota (section 5).
