@@ -3,8 +3,8 @@ name: setting-up-pyutils
 description: Install and configure the Mu2e pyutils library, verify the installation, and create your first working processor. Use when you need to set up pyutils for the first time or troubleshoot installation issues.
 compatibility: Requires mu2einit, Python 3.7+, git access to github.com/Mu2e/pyutils
 metadata:
-  version: "1.0.0"
-  last-updated: "2026-04-27"
+  version: "1.1.0"
+  last-updated: "2026-10-14"
 ---
 
 # Setting Up Pyutils
@@ -60,6 +60,8 @@ pyenv ana
 ```
 
 This ensures ROOT, art modules, and other Mu2e dependencies are available alongside pyutils.
+
+Working off-cluster (laptop venv, no ROOT/CVMFS)? See [references/off-cluster.md](references/off-cluster.md).
 
 ### Verify Installation
 
@@ -538,3 +540,4 @@ logger.log("Message text", "info")  # or "debug", "warning", "error", "success"
 - `analyzing-with-pyutils` - Physics analysis workflows (cuts, histograms, data structures)
 - `coding-with-metacat` - Finding and querying Mu2e ROOT files
 - `finding-data-sam` - Alternative data discovery method
+- [references/off-cluster.md](references/off-cluster.md) - Running pyutils/uproot analyses on a laptop venv
