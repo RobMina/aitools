@@ -1,10 +1,10 @@
 ---
 name: running-on-gpvms
-description: Shell and session gotchas for non-interactive work on the Mu2e interactive GPVM nodes. Use when launching background or long jobs over ssh or tmux, when a job "launches fine" but produces nothing, on "cannot overwrite existing file" (noclobber, >|), set -u aborting muse setup, SIGHUP killing nohup jobs, expired Kerberos tickets or "Key has expired" in tmux, stat/ls on /pnfs hanging, pyenv ana not found, Ceph quota or data-area placement, or how many jobs to run per GPVM.
+description: Shell and session gotchas for non-interactive work on the Mu2e interactive GPVM nodes. Use when launching background or long jobs over ssh or tmux, when a job "launches fine" but produces nothing, on "cannot overwrite existing file" (noclobber, >|), set -u aborting muse setup, SIGHUP killing nohup jobs, expired Kerberos tickets or "Key has expired" in tmux, stat/ls on /pnfs hanging, pyenv ana not found, hadd or root not found, Ceph quota or data-area placement, or how many jobs to run per GPVM.
 compatibility: Requires ssh access to a Mu2e interactive GPVM node (Kerberos), the /cvmfs/mu2e.opensciencegrid.org setup scripts, and optionally tmux
 metadata:
   version: "1.0.0"
-  last-updated: "2026-10-14"
+  last-updated: "2026-10-16"
 ---
 
 # Running on the GPVMs
@@ -70,6 +70,23 @@ Afterwards `python3` has the analysis stack (`uproot`, `awkward`, `numpy`,
 `matplotlib`, `scipy`, `pyutils`). The system Python on the nodes lacks these.
 A fresh non-login shell does not re-source the setup for you, so repeat both
 commands in each new one-shot shell that needs the stack.
+
+### Which setup puts `hadd` and `root` on PATH
+
+`hadd` and `root` come from the art/ROOT Spack environment that `muse setup`
+loads, not from the base setup script or the analysis Python environment:
+
+| after `source setupmu2e-art.sh` and ... | `hadd` / `root` |
+|---|---|
+| nothing else | not on PATH |
+| `pyenv ana` | not on PATH |
+| `muse setup ops` | not on PATH |
+| `muse setup` in a Muse working directory | on PATH |
+| `muse setup SimJob` (any published release) | on PATH |
+
+To merge ntuples from a `pyenv ana` shell, open a separate shell with
+`muse setup` (or `muse setup SimJob`) for the `hadd`, rather than sourcing a
+ROOT `thisroot.sh` by hand. Checked on an AL9 GPVM, 2026-10-16.
 
 ### FHiCL `#include` does not take absolute paths
 
